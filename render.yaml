@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: black-scholes-terminal
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
