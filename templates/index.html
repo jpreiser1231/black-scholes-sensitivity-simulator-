@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Black-Scholes Terminal</title>
+<style>
+  :root{
+    --bg:#0e1520; --panel:#141d2b; --line:#233047; --text:#e7ecf3; --dim:#8695ab;
+    --accent:#4fd1a5; --accent-dim:#2c5b4a; --danger:#e0685f;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:Georgia,serif; min-height:100vh;}
+  .num{font-family:'SF Mono','Consolas',monospace;}
+  header{padding:28px 24px 18px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+  header h1{font-size:22px; font-weight:400; margin:0;}
+  header .sub{color:var(--dim); font-size:13px; font-family:'SF Mono',monospace;}
+  main{max-width:960px; margin:0 auto; padding:24px; display:grid; grid-template-columns:1fr; gap:20px;}
+  @media(min-width:800px){ main{grid-template-columns:1.1fr 1fr;} }
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px 22px;}
+  .panel h2{font-size:13px; font-weight:400; color:var(--dim); margin:0 0 16px; font-family:'SF Mono',monospace;}
+  .field{margin-bottom:16px;}
+  .field label{display:flex; justify-content:space-between; font-size:13px; color:var(--dim); margin-bottom:6px;}
+  .field label .val{color:var(--text); font-family:'SF Mono',monospace;}
+  .field input[type=range]{width:100%; accent-color:var(--accent);}
+  .field input[type=text]{width:100%; background:#0b111a; border:1px solid var(--line); color:var(--text); padding:8px 10px; border-radius:6px; font-family:'SF Mono',monospace; font-size:14px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .fetchrow{display:flex; gap:8px; margin-bottom:16px;}
+  .fetchrow input{flex:1;}
+  .fetchrow button{background:var(--accent-dim); color:var(--accent); border:1px solid var(--line); border-radius:6px; padding:0 16px; font-family:'SF Mono',monospace; cursor:pointer;}
+  .fetchrow button:disabled{opacity:.5; cursor:default;}
+  .status{font-size:12px; color:var(--dim); font-family:'SF Mono',monospace; min-height:16px; margin:-8px 0 12px;}
+  .status.err{color:var(--danger);}
+  .toggle{display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin-bottom:16px;}
+  .toggle button{flex:1; background:#0b111a; color:var(--dim); border:none; padding:9px; cursor:pointer; font-family:'SF Mono',monospace; font-size:13px;}
+  .toggle button.active{background:var(--accent-dim); color:var(--accent);}
+  .price-hero{text-align:center; padding:18px 0 24px;}
+  .price-hero .label{color:var(--dim); font-size:12px; font-family:'SF Mono',monospace;}
+  .price-hero .amount{font-size:52px; font-family:'SF Mono',monospace; color:var(--accent); margin-top:6px;}
+  .greeks{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px;}
+  .greek{background:#0b111a; border:1px solid var(--line); border-radius:6px; padding:10px 6px; text-align:center;}
+  .greek .g-label{color:var(--dim); font-size:11px; font-family:'SF Mono',monospace;}
+  .greek .g-val{font-family:'SF Mono',monospace; font-size:14px; margin-top:4px;}
+  canvas{width:100%; height:180px; display:block; margin-top:6px;}
+  .note{color:var(--dim); font-size:12px; line-height:1.5; margin-top:14px; padding-top:14px; border-top:1px solid var(--line);}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Black-Scholes Terminal</h1>
+  <div class="sub" id="tickerLabel">live data via Render backend</div>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>INPUTS</h2>
+
+    <div class="fetchrow">
+      <input type="text" id="ticker" value="AAPL" maxlength="8">
+      <button id="fetchBtn">Fetch live</button>
+    </div>
+    <div class="status" id="status"></div>
+
+    <div class="toggle">
+      <button id="btnCall" class="active">Call</button>
+      <button id="btnPut">Put</button>
+    </div>
+
+    <div class="field">
+      <label>Spot price (S) <span class="val" id="sVal">230.00</span></label>
+      <input type="range" id="sRange" min="1" max="1000" step="0.5" value="230">
+    </div>
+    <div class="field">
+      <label>Strike price (K) <span class="val" id="kVal">230.00</span></label>
+      <input type="range" id="kRange" min="1" max="1000" step="0.5" value="230">
+    </div>
+    <div class="field">
+      <label>Days to expiry (T) <span class="val" id="tVal">30 d</span></label>
+      <input type="range" id="tRange" min="1" max="730" step="1" value="30">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Risk-free rate (r) <span class="val" id="rVal">4.30%</span></label>
+        <input type="range" id="rRange" min="0" max="10" step="0.05" value="4.3">
+      </div>
+      <div class="field">
+        <label>Volatility (σ) <span class="val" id="sigVal">28.0%</span></label>
+        <input type="range" id="sigRange" min="1" max="150" step="0.5" value="28">
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>OUTPUT</h2>
+    <div class="price-hero">
+      <div class="label" id="priceLabel">CALL PRICE</div>
+      <div class="amount num" id="priceOut">$0.00</div>
+    </div>
+
+    <h2>GREEKS</h2>
+    <div class="greeks">
+      <div class="greek"><div class="g-label">Delta</div><div class="g-val num" id="gDelta">-</div></div>
+      <div class="greek"><div class="g-label">Gamma</div><div class="g-val num" id="gGamma">-</div></div>
+      <div class="greek"><div class="g-label">Vega</div><div class="g-val num" id="gVega">-</div></div>
+      <div class="greek"><div class="g-label">Theta</div><div class="g-val num" id="gTheta">-</div></div>
+      <div class="greek"><div class="g-label">Rho</div><div class="g-val num" id="gRho">-</div></div>
+    </div>
+
+    <h2 style="margin-top:20px">PRICE VS SPOT</h2>
+    <canvas id="chart"></canvas>
+
+    <div class="note">
+      "Fetch live" calls this app's own backend (<code>/api/quote</code>, <code>/api/rate</code>), which
+      runs <code>yfinance</code> and FRED server-side on Render, then fills in S, σ, and r.
+    </div>
+  </div>
+</main>
+
+<script>
+function erf(x){
+  const sign=x<0?-1:1; x=Math.abs(x);
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const t=1/(1+p*x);
+  const y=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return sign*y;
+}
+function normCdf(x){ return 0.5*(1+erf(x/Math.SQRT2)); }
+function normPdf(x){ return Math.exp(-x*x/2)/Math.sqrt(2*Math.PI); }
+
+function bs(S,K,T,r,sig,type){
+  const d1=(Math.log(S/K)+(r+0.5*sig*sig)*T)/(sig*Math.sqrt(T));
+  const d2=d1-sig*Math.sqrt(T);
+  let price,delta,rho;
+  if(type==='call'){
+    price=S*normCdf(d1)-K*Math.exp(-r*T)*normCdf(d2);
+    delta=normCdf(d1);
+    rho=K*T*Math.exp(-r*T)*normCdf(d2)/100;
+  } else {
+    price=K*Math.exp(-r*T)*normCdf(-d2)-S*normCdf(-d1);
+    delta=normCdf(d1)-1;
+    rho=-K*T*Math.exp(-r*T)*normCdf(-d2)/100;
+  }
+  const gamma=normPdf(d1)/(S*sig*Math.sqrt(T));
+  const vega=S*normPdf(d1)*Math.sqrt(T)/100;
+  const thetaCommon=-(S*normPdf(d1)*sig)/(2*Math.sqrt(T));
+  const theta=type==='call'
+    ? (thetaCommon-r*K*Math.exp(-r*T)*normCdf(d2))/365
+    : (thetaCommon+r*K*Math.exp(-r*T)*normCdf(-d2))/365;
+  return {price,delta,gamma,vega,theta,rho};
+}
+
+const el = id => document.getElementById(id);
+let optionType = 'call';
+const fmt = n => (n<0?'-':'')+'$'+Math.abs(n).toFixed(2);
+
+function draw(){
+  const S=+el('sRange').value, K=+el('kRange').value, days=+el('tRange').value;
+  const r=+el('rRange').value/100, sig=+el('sigRange').value/100;
+  const T=days/365;
+
+  el('sVal').textContent=S.toFixed(2);
+  el('kVal').textContent=K.toFixed(2);
+  el('tVal').textContent=days+' d';
+  el('rVal').textContent=(r*100).toFixed(2)+'%';
+  el('sigVal').textContent=(sig*100).toFixed(1)+'%';
+
+  const out=bs(S,K,Math.max(T,0.0001),r,Math.max(sig,0.001),optionType);
+  el('priceLabel').textContent=(optionType==='call'?'CALL':'PUT')+' PRICE';
+  el('priceOut').textContent=fmt(out.price);
+  el('gDelta').textContent=out.delta.toFixed(3);
+  el('gGamma').textContent=out.gamma.toFixed(4);
+  el('gVega').textContent=out.vega.toFixed(3);
+  el('gTheta').textContent=out.theta.toFixed(3);
+  el('gRho').textContent=out.rho.toFixed(3);
+
+  drawChart(S,K,Math.max(T,0.0001),r,Math.max(sig,0.001));
+}
+
+function drawChart(S,K,T,r,sig){
+  const canvas=el('chart');
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.clientWidth, h=canvas.clientHeight||180;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,w,h);
+
+  const lo=S*0.5, hi=S*1.5, N=60;
+  const pts=[]; let maxP=0;
+  for(let i=0;i<=N;i++){
+    const s=lo+(hi-lo)*i/N;
+    const p=bs(s,K,T,r,sig,optionType).price;
+    pts.push([s,p]); if(p>maxP) maxP=p;
+  }
+  const pad=8;
+  const xAt=s=>pad+(s-lo)/(hi-lo)*(w-2*pad);
+  const yAt=p=>h-pad-(p/(maxP||1))*(h-2*pad);
+
+  ctx.strokeStyle='#233047'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,h-pad); ctx.lineTo(w-pad,h-pad); ctx.stroke();
+
+  ctx.strokeStyle='#4fd1a5'; ctx.lineWidth=2; ctx.beginPath();
+  pts.forEach(([s,p],i)=>{ const x=xAt(s), y=yAt(p); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+  ctx.stroke();
+
+  const cx=xAt(S);
+  ctx.strokeStyle='#e0685f'; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(cx,pad); ctx.lineTo(cx,h-pad); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+async function fetchLive(){
+  const ticker=(el('ticker').value||'AAPL').toUpperCase().trim();
+  const statusEl=el('status');
+  const btn=el('fetchBtn');
+  btn.disabled=true;
+  statusEl.className='status';
+  statusEl.textContent='Fetching '+ticker+'…';
+  try{
+    const [qRes,rRes]=await Promise.all([
+      fetch('/api/quote?ticker='+encodeURIComponent(ticker)),
+      fetch('/api/rate')
+    ]);
+    const q=await qRes.json();
+    const rd=await rRes.json();
+    if(q.error) throw new Error(q.error);
+    if(rd.error) throw new Error(rd.error);
+
+    el('sRange').max=Math.max(+el('sRange').max, Math.ceil(q.price*2));
+    el('kRange').max=el('sRange').max;
+    el('sRange').value=q.price;
+    el('kRange').value=q.price;
+    el('sigRange').value=Math.min(150, Math.round(q.volatility*1000)/10);
+    el('rRange').value=Math.round(rd.rate*10000)/100;
+
+    el('tickerLabel').textContent=ticker+' · live as of '+q.as_of;
+    statusEl.textContent='Updated: S=$'+q.price+', σ='+(q.volatility*100).toFixed(1)+'%, r='+(rd.rate*100).toFixed(2)+'% (rate as of '+rd.as_of+')';
+    draw();
+  }catch(err){
+    statusEl.className='status err';
+    statusEl.textContent='Error: '+err.message;
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+['sRange','kRange','tRange','rRange','sigRange'].forEach(id=>{
+  el(id).addEventListener('input', draw);
+});
+el('fetchBtn').addEventListener('click', fetchLive);
+el('btnCall').addEventListener('click', ()=>{ optionType='call'; el('btnCall').classList.add('active'); el('btnPut').classList.remove('active'); draw(); });
+el('btnPut').addEventListener('click', ()=>{ optionType='put'; el('btnPut').classList.add('active'); el('btnCall').classList.remove('active'); draw(); });
+window.addEventListener('resize', draw);
+
+draw();
+</script>
+</body>
+</html>
